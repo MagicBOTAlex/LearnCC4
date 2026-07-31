@@ -1,69 +1,102 @@
 <script>
   import { pinyin } from 'pinyin-pro';
 
-  // Svelte 5 state (if using Svelte 4, use: let input = '你好世界';)
-  let input = $state('你好世界');
-  let toneType = $state('symbol'); // Options: 'symbol' (nǐ), 'num' (ni3), 'none' (ni)
+  // Input state
+  let textInput = $state('你好世界');
+  
+  // Submitted paired data state
+  let pairs = $state([]);
+  let submitted = $state(false);
 
-  // Reactive derivation
-  let pinyinResult = $derived(
-    pinyin(input, { toneType, nonZh: 'consecutive' })
-  );
+  // Palette of Tailwind border colors to cycle through
+  const colorPalette = [
+    'border-blue-500 text-blue-600',
+    'border-emerald-500 text-emerald-600',
+    'border-amber-500 text-amber-600',
+    'border-purple-500 text-purple-600',
+    'border-rose-500 text-rose-600',
+    'border-indigo-500 text-indigo-600',
+    'border-teal-500 text-teal-600'
+  ];
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    if (!textInput.trim()) return;
+
+    // Convert string into arrays of chars and pinyin syllables (tone accents)
+    const chars = Array.from(textInput);
+    const pinyinList = pinyin(textInput, { 
+      type: 'array', 
+      toneType: 'symbol', 
+      nonZh: 'consecutive' 
+    });
+
+    // Map each char to its pinyin and assign a cycling color class
+    pairs = chars.map((char, index) => {
+      const colorClass = colorPalette[index % colorPalette.length];
+      return {
+        char,
+        pinyin: pinyinList[index] || '',
+        colorClass
+      };
+    });
+
+    submitted = true;
+  }
 </script>
 
-<main class="container">
-  <h2>Chinese to Pinyin Converter</h2>
+<main class="max-w-md mx-auto my-8 p-6 bg-white rounded-xl shadow-md space-y-6 border border-slate-100">
+  <h2 class="text-xl font-bold text-slate-800">Chinese to Pinyin Converter</h2>
 
-  <div class="field">
-    <label for="chinese-text">Enter Chinese Characters:</label>
-    <input 
-      id="chinese-text" 
-      type="text" 
-      bind:value={input} 
-      placeholder="Type Hanzi here..." 
-    />
-  </div>
+  <!-- Form Section -->
+  <form onsubmit={handleSubmit} class="space-y-4">
+    <div class="flex flex-col gap-1.5">
+      <label for="chinese-text" class="text-sm font-medium text-slate-700">
+        Enter Chinese Characters:
+      </label>
+      <input 
+        id="chinese-text" 
+        type="text" 
+        bind:value={textInput} 
+        placeholder="Type Hanzi here..." 
+        class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+      />
+    </div>
 
-  <div class="field">
-    <label for="tone-select">Tone Format:</label>
-    <select id="tone-select" bind:value={toneType}>
-      <option value="symbol">Tone Accent (nǐ hǎo)</option>
-      <option value="num">Numbered Tone (ni3 hao3)</option>
-      <option value="none">No Tone (ni hao)</option>
-    </select>
-  </div>
+    <button 
+      type="submit" 
+      class="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-sm transition active:scale-[0.99]"
+    >
+      Submit
+    </button>
+  </form>
 
-  <div class="output">
-    <h3>Pinyin Output:</h3>
-    <p class="result">{pinyinResult || '—'}</p>
-  </div>
+  <!-- Output Section (only shows after submit) -->
+  {#if submitted}
+    <div class="pt-4 border-t border-slate-200 space-y-4">
+      <!-- Chinese Characters Field (no spacing between chars) -->
+      <div>
+        <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Chinese</h3>
+        <div class="flex flex-wrap items-center">
+          {#each pairs as item}
+            <span class="text-2xl font-semibold border-b-4 pb-0.5 {item.colorClass}">
+              {item.char}
+            </span>
+          {/each}
+        </div>
+      </div>
+
+      <!-- Pinyin Field (spaced by words/syllables) -->
+      <div>
+        <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Pinyin</h3>
+        <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+          {#each pairs as item}
+            <span class="text-lg font-medium border-b-2 pb-0.5 {item.colorClass}">
+              {item.pinyin}
+            </span>
+          {/each}
+        </div>
+      </div>
+    </div>
+  {/if}
 </main>
-
-<style>
-  .container {
-    max-width: 450px;
-    margin: 2rem auto;
-    font-family: system-ui, sans-serif;
-  }
-  .field {
-    margin-bottom: 1rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-  }
-  input, select {
-    padding: 0.5rem;
-    font-size: 1rem;
-  }
-  .output {
-    margin-top: 1.5rem;
-    padding: 1rem;
-    background-color: #f4f4f5;
-    border-radius: 6px;
-  }
-  .result {
-    font-size: 1.25rem;
-    font-weight: 600;
-    color: #2563eb;
-  }
-</style>
