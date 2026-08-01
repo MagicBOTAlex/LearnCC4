@@ -45,6 +45,13 @@
     submitted = true;
   }
 
+  function handleKeyDown(e) {
+    // Submit on Cmd+Enter or Ctrl+Enter
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      handleSubmit(e);
+    }
+  }
+
   function copyPinyin() {
     const fullPinyin = pairs.map(p => p.pinyin).join(' ');
     navigator.clipboard.writeText(fullPinyin);
@@ -66,13 +73,14 @@
       </div>
 
       <div class="relative">
-        <input 
+        <textarea 
           id="chinese-text" 
-          type="text" 
+          rows="3"
           bind:value={textInput} 
+          onkeydown={handleKeyDown}
           placeholder="Type Hanzi here..." 
-          class="w-full px-4 py-3 bg-slate-950/60 border border-slate-800 rounded-xl text-slate-100 placeholder-slate-500 text-base focus:bg-slate-950 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500 transition-all duration-200"
-        />
+          class="w-full px-4 py-3 bg-slate-950/60 border border-slate-800 rounded-xl text-slate-100 placeholder-slate-500 text-base focus:bg-slate-950 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500 transition-all duration-200 resize-y min-h-[5rem]"
+        ></textarea>
       </div>
     </div>
 
