@@ -1,60 +1,121 @@
 <script>
   import { pinyin } from 'pinyin-pro';
 
-  // Input state
-  let textInput = $state('你好世界');
-  
-  // Submitted paired data state
-  let pairs = $state([]);
+  /** Converts raw text input into structured sentence groups based on custom punctuation/quote logic */
+  function parseTextToPinyinGroups(text) {
+    if (!text.trim()) return [];
+
+    // FIX 1: Added the full-width comma '，' that was missing in the previous version
+    const SENTENCE_PUNCT_REGEX = /[,，.。!！?？;；:：]/;
+
+    // Identify paired wrapper characters (quotes, brackets, parentheses)
+    const PAIRS = {
+      '(': ')', '（': '）',
+      '[': ']', '【': '】',
+      '{': '}', '《': '》',
+      '"': '"', "'": "'",
+      '“': '”', '‘': '’'
+    };
+    const OPENERS = new Set(Object.keys(PAIRS));
+    const CLOSERS = new Set(Object.values(PAIRS));
+
+    const chunks = [];
+    let currentChunk = '';
+    const stack = []; // Track active quotes/parentheses
+
+    // Helper: append complete chunk to results with Pinyin metadata
+    function pushChunk(str) {
+      const trimmed = str.trim();
+      if (!trimmed) return;
+
+      const chars = Array.from(trimmed);
+      const pinyinList = pinyin(trimmed, { 
+        type: 'array', 
+        toneType: 'symbol' 
+        // FIX 2: Removed nonZh: 'consecutive' 
+        // Consecutive punctuation like `)，` would group together in pinyin-pro
+        // and break the 1-to-1 mapping length between `chars` and `pinyinList`.
+      });
+
+      chunks.push(
+        chars.map((char, index) => ({
+          char,
+          pinyin: pinyinList[index] || ''
+        }))
+      );
+    }
+
+    // Process character by character
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      const currentEnclosure = stack[stack.length - 1];
+
+      if (OPENERS.has(char)) {
+        // Handle matching quotes/brackets
+        if (currentEnclosure && PAIRS[currentEnclosure] === char) {
+          stack.pop();
+          currentChunk += char;
+        } else {
+          stack.push(char);
+          currentChunk += char;
+        }
+      } else if (CLOSERS.has(char)) {
+        if (currentEnclosure && PAIRS[currentEnclosure] === char) {
+          stack.pop();
+        }
+        currentChunk += char;
+      } else if (SENTENCE_PUNCT_REGEX.test(char)) {
+        // Punctuation attaches to current chunk, then triggers split
+        currentChunk += char;
+        pushChunk(currentChunk);
+        currentChunk = '';
+      } else {
+        currentChunk += char;
+      }
+    }
+
+    // Push any remaining text
+    if (currentChunk) {
+      pushChunk(currentChunk);
+    }
+
+    return chunks;
+  }
+
+  /** Flattens sentence groups into a single formatted Pinyin string */
+  function formatFullPinyin(groups) {
+    return groups
+      .flatMap(group => group.map(p => p.pinyin))
+      .join(' ');
+  }
+
+  // --- 2. STATE MANAGEMENT ---
+  let textInput = $state('');
+  let sentenceGroups = $state([]);
   let submitted = $state(false);
   let copied = $state(false);
 
-  // Clean Palette of Tailwind accent colors adapted for Dark Mode
-  const colorPalette = [
-    { border: 'border-blue-500/60', bg: 'bg-blue-950/40' },
-    { border: 'border-emerald-500/60', bg: 'bg-emerald-950/40' },
-    { border: 'border-amber-500/60', bg: 'bg-amber-950/40' },
-    { border: 'border-purple-500/60', bg: 'bg-purple-950/40' },
-    { border: 'border-rose-500/60', bg: 'bg-rose-950/40' },
-    { border: 'border-indigo-500/60', bg: 'bg-indigo-950/40' },
-    { border: 'border-teal-500/60', bg: 'bg-teal-950/40' }
-  ];
+  // Derived state
+  const charCount = $derived(textInput.length);
 
+  // --- 3. EVENT HANDLERS & ACTIONS ---
   function handleSubmit(e) {
     if (e) e.preventDefault();
     if (!textInput.trim()) return;
 
-    // Convert string into arrays of chars and pinyin syllables
-    const chars = Array.from(textInput);
-    const pinyinList = pinyin(textInput, { 
-      type: 'array', 
-      toneType: 'symbol', 
-      nonZh: 'consecutive' 
-    });
-
-    // Map each char to its pinyin and assign a cycling color theme
-    pairs = chars.map((char, index) => {
-      const colorScheme = colorPalette[index % colorPalette.length];
-      return {
-        char,
-        pinyin: pinyinList[index] || '',
-        ...colorScheme
-      };
-    });
-
+    sentenceGroups = parseTextToPinyinGroups(textInput);
     submitted = true;
   }
 
   function handleKeyDown(e) {
-    // Submit on Cmd+Enter or Ctrl+Enter
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
       handleSubmit(e);
     }
   }
 
-  function copyPinyin() {
-    const fullPinyin = pairs.map(p => p.pinyin).join(' ');
-    navigator.clipboard.writeText(fullPinyin);
+  async function copyPinyin() {
+    const fullPinyin = formatFullPinyin(sentenceGroups);
+    await navigator.clipboard.writeText(fullPinyin);
     copied = true;
     setTimeout(() => (copied = false), 2000);
   }
@@ -62,14 +123,14 @@
 
 <main class="max-w-lg mx-auto my-12 p-8 bg-slate-900/90 backdrop-blur-md rounded-2xl shadow-2xl shadow-black/50 border border-slate-800 font-sans text-slate-100">
 
-  <!-- Form Section -->
+  <!-- FORM SECTION -->
   <form onsubmit={handleSubmit} class="space-y-5">
     <div class="flex flex-col gap-2">
       <div class="flex justify-between items-center">
         <label for="chinese-text" class="text-xs font-bold uppercase tracking-wider text-slate-400">
           Enter Chinese Characters
         </label>
-        <span class="text-xs text-slate-500">{textInput.length} chars</span>
+        <span class="text-xs text-slate-500">{charCount} chars</span>
       </div>
 
       <div class="relative">
@@ -95,12 +156,13 @@
     </button>
   </form>
 
-  <!-- Output Section -->
+  <!-- OUTPUT SECTION -->
   {#if submitted}
     <div class="mt-8 pt-6 border-t border-slate-800 space-y-6 animate-in fade-in duration-300">
+      
       <!-- Toolbar Header -->
       <div class="flex items-center justify-between">
-        <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400">Result Cards</h3>
+        <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400">Result Sentences</h3>
         <button 
           type="button" 
           onclick={copyPinyin}
@@ -114,32 +176,33 @@
         </button>
       </div>
 
-      <!-- Separate Text Flows -->
-      <div class="p-4 bg-slate-950/50 rounded-xl space-y-4 border border-slate-800/80">
-        <!-- Chinese Characters Field -->
-        <div>
-          <h4 class="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Hanzi Flow</h4>
-          <div class="flex flex-wrap items-center">
-            {#each pairs as item}
-              <span class="text-2xl font-bold border-b-2 pb-0.5 {item.border} text-slate-100">
-                {item.char}
-              </span>
-            {/each}
-          </div>
-        </div>
+      <!-- Segmented Sentence Blocks -->
+      <div class="space-y-4">
+        {#each sentenceGroups as group, idx}
+          <div class="p-4 bg-slate-950/50 rounded-xl space-y-3 border border-slate-800/80">
+            <!-- Hanzi Segment -->
+            <div>
+              <h4 class="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Sentence {idx + 1} - Hanzi</h4>
+              <div class="flex flex-wrap items-center gap-x-1">
+                {#each group as item}
+                  <span class="text-2xl font-bold text-slate-100">{item.char}</span>
+                {/each}
+              </div>
+            </div>
 
-        <!-- Pinyin Field -->
-        <div>
-          <h4 class="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Pinyin Flow</h4>
-          <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
-            {#each pairs as item}
-              <span class="text-base font-medium border-b-2 pb-0.5 {item.border} {item.text}">
-                {item.pinyin}
-              </span>
-            {/each}
+            <!-- Pinyin Segment -->
+            <div>
+              <h4 class="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Pinyin</h4>
+              <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+                {#each group as item}
+                  <span class="text-base font-medium text-slate-300">{item.pinyin}</span>
+                {/each}
+              </div>
+            </div>
           </div>
-        </div>
+        {/each}
       </div>
+
     </div>
   {/if}
 </main>
