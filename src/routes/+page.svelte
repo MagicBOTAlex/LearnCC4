@@ -5,7 +5,6 @@
   function parseTextToPinyinGroups(text) {
     if (!text.trim()) return [];
 
-    // FIX 1: Added the full-width comma '，' that was missing in the previous version
     const SENTENCE_PUNCT_REGEX = /[,，.。!！?？;；:：]/;
 
     // Identify paired wrapper characters (quotes, brackets, parentheses)
@@ -32,9 +31,6 @@
       const pinyinList = pinyin(trimmed, { 
         type: 'array', 
         toneType: 'symbol' 
-        // FIX 2: Removed nonZh: 'consecutive' 
-        // Consecutive punctuation like `)，` would group together in pinyin-pro
-        // and break the 1-to-1 mapping length between `chars` and `pinyinList`.
       });
 
       chunks.push(
@@ -51,7 +47,6 @@
       const currentEnclosure = stack[stack.length - 1];
 
       if (OPENERS.has(char)) {
-        // Handle matching quotes/brackets
         if (currentEnclosure && PAIRS[currentEnclosure] === char) {
           stack.pop();
           currentChunk += char;
@@ -65,7 +60,6 @@
         }
         currentChunk += char;
       } else if (SENTENCE_PUNCT_REGEX.test(char)) {
-        // Punctuation attaches to current chunk, then triggers split
         currentChunk += char;
         pushChunk(currentChunk);
         currentChunk = '';
@@ -74,7 +68,6 @@
       }
     }
 
-    // Push any remaining text
     if (currentChunk) {
       pushChunk(currentChunk);
     }
@@ -119,6 +112,17 @@
     copied = true;
     setTimeout(() => (copied = false), 2000);
   }
+
+  // Updated: Paste & Override with Auto-Submit
+  async function pasteAndOverride() {
+    try {
+      const text = await navigator.clipboard.readText();
+      textInput = text;
+      handleSubmit(); // Auto-submits the form immediately after pasting
+    } catch (err) {
+      console.error('Failed to read clipboard contents: ', err);
+    }
+  }
 </script>
 
 <main class="max-w-lg mx-auto my-12 p-8 bg-slate-900/90 backdrop-blur-md rounded-2xl shadow-2xl shadow-black/50 border border-slate-800 font-sans text-slate-100">
@@ -126,11 +130,20 @@
   <!-- FORM SECTION -->
   <form onsubmit={handleSubmit} class="space-y-5">
     <div class="flex flex-col gap-2">
-      <div class="flex justify-between items-center">
+      <div class="flex justify-between items-end mb-1">
         <label for="chinese-text" class="text-xs font-bold uppercase tracking-wider text-slate-400">
           Enter Chinese Characters
         </label>
-        <span class="text-xs text-slate-500">{charCount} chars</span>
+        <div class="flex items-center gap-3">
+          <button 
+            type="button" 
+            onclick={pasteAndOverride}
+            class="text-[10px] uppercase font-bold tracking-wider text-indigo-400 hover:text-indigo-300 bg-indigo-500/10 hover:bg-indigo-500/20 px-2.5 py-1 rounded-md transition-colors border border-indigo-500/20"
+          >
+            Paste & Override
+          </button>
+          <span class="text-xs text-slate-500">{charCount} chars</span>
+        </div>
       </div>
 
       <div class="relative">
@@ -183,21 +196,21 @@
             <!-- Hanzi Segment -->
             <div>
               <h4 class="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Sentence {idx + 1} - Hanzi</h4>
-              <div class="flex flex-wrap items-center gap-x-1">
-                {#each group as item}
-                  <span class="text-2xl font-bold text-slate-100">{item.char}</span>
-                {/each}
-              </div>
+              <p class="text-2xl font-bold text-slate-100 break-words leading-relaxed">
+                {#each group as item}{item.char}{/each}
+              </p>
             </div>
 
             <!-- Pinyin Segment -->
             <div>
               <h4 class="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Pinyin</h4>
-              <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <p class="text-base font-medium text-slate-300 break-words leading-relaxed">
                 {#each group as item}
-                  <span class="text-base font-medium text-slate-300">{item.pinyin}</span>
+                  {#if item.pinyin}
+                    <span>{item.pinyin}&nbsp;</span>
+                  {/if}
                 {/each}
-              </div>
+              </p>
             </div>
           </div>
         {/each}
