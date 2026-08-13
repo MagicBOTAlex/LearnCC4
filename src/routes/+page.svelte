@@ -2,6 +2,7 @@
   import { pinyin } from 'pinyin-pro';
 
   /** Converts raw text input into structured sentence groups based on custom punctuation/quote/emoji/space logic */
+/** Converts raw text input into structured sentence groups based on custom punctuation/quote/emoji/space/link logic */
 function parseTextToPinyinGroups(text) {
   if (!text.trim()) return [];
 
@@ -14,6 +15,9 @@ function parseTextToPinyinGroups(text) {
       })
     ];
   }
+
+  // Regex to match URLs (http, https, or standard c.tb.cn-style domain links)
+  const URL_REGEX = /(https?:\/\/[^\s\u3000,\uFF0C\u3002!！?？;；:：\u201C\u201D"'\u3010\u3011\uFF08\uFF09]+|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?::\d+)?(?:\/[^\s\u3000,\uFF0C\u3002!！?？;；:：]*)?)/g;
 
   // Regex matching standard punctuation, spaces (\s, \u3000), or Unicode Emojis
   const SENTENCE_PUNCT_REGEX = /[,，.。!！?？;；:：\s\u3000]|\p{Extended_Pictographic}/u;
@@ -28,66 +32,93 @@ function parseTextToPinyinGroups(text) {
   const OPENERS = new Set(Object.keys(PAIRS));
   const CLOSERS = new Set(Object.values(PAIRS));
 
-  const chunks = [];
-  let currentChunk = '';
-  const stack = [];
+  // --- Step 1: Tokenize text into URLs and non-URL text blocks ---
+  const tokens = [];
+  let lastIdx = 0;
+  let match;
 
-  function pushChunk(str) {
-    const trimmed = str.trim();
-    if (!trimmed) return;
-
-    const chars = Array.from(trimmed);
-    const pinyinList = pinyin(trimmed, { 
-      type: 'array', 
-      toneType: 'symbol' 
-    });
-
-    chunks.push(
-      chars.map((char, index) => ({
-        char,
-        pinyin: pinyinList[index] || ''
-      }))
-    );
+  while ((match = URL_REGEX.exec(text)) !== null) {
+    if (match.index > lastIdx) {
+      tokens.push({ type: 'text', content: text.slice(lastIdx, match.index) });
+    }
+    tokens.push({ type: 'url', content: match[0] });
+    lastIdx = URL_REGEX.lastIndex;
+  }
+  if (lastIdx < text.length) {
+    tokens.push({ type: 'text', content: text.slice(lastIdx) });
   }
 
-  const characters = Array.from(text);
+  // --- Step 2: Helper to turn text into Pinyin items ---
+  function createPinyinItems(str) {
+    const chars = Array.from(str);
+    const pinyinList = pinyin(str, { type: 'array', toneType: 'symbol' });
 
-  for (let i = 0; i < characters.length; i++) {
-    const char = characters[i];
-    const currentEnclosure = stack[stack.length - 1];
+    return chars.map((char, index) => ({
+      char,
+      pinyin: pinyinList[index] || ''
+    }));
+  }
 
-    if (OPENERS.has(char)) {
-      if (currentEnclosure && PAIRS[currentEnclosure] === char) {
-        stack.pop();
-        currentChunk += char;
+  // --- Step 3: Segment tokens while handling delimiters and quotes ---
+  const chunks = [];
+  let currentGroup = [];
+  const stack = [];
+
+  for (const token of tokens) {
+    if (token.type === 'url') {
+      // Treat the whole URL as a single block (no pinyin for URL characters)
+      currentGroup.push({
+        char: token.content,
+        pinyin: ''
+      });
+      // A URL acts as a distinct segment bound
+      if (stack.length === 0 && currentGroup.length > 0) {
+        chunks.push(currentGroup);
+        currentGroup = [];
+      }
+      continue;
+    }
+
+    // Process regular text character by character
+    const characters = Array.from(token.content);
+    for (let i = 0; i < characters.length; i++) {
+      const char = characters[i];
+      const currentEnclosure = stack[stack.length - 1];
+
+      if (OPENERS.has(char)) {
+        if (currentEnclosure && PAIRS[currentEnclosure] === char) {
+          stack.pop();
+        } else {
+          stack.push(char);
+        }
+        currentGroup.push(...createPinyinItems(char));
+      } else if (CLOSERS.has(char)) {
+        if (currentEnclosure && PAIRS[currentEnclosure] === char) {
+          stack.pop();
+        }
+        currentGroup.push(...createPinyinItems(char));
+      } else if (SENTENCE_PUNCT_REGEX.test(char)) {
+        currentGroup.push(...createPinyinItems(char));
+        
+        // If not inside quotes/brackets, finish current sentence chunk
+        if (stack.length === 0) {
+          if (currentGroup.length > 0) {
+            chunks.push(currentGroup);
+            currentGroup = [];
+          }
+        }
       } else {
-        stack.push(char);
-        currentChunk += char;
+        currentGroup.push(...createPinyinItems(char));
       }
-    } else if (CLOSERS.has(char)) {
-      if (currentEnclosure && PAIRS[currentEnclosure] === char) {
-        stack.pop();
-      }
-      currentChunk += char;
-    } else if (SENTENCE_PUNCT_REGEX.test(char)) {
-      // If we encounter a delimiter while inside quotes/brackets, keep it in current chunk
-      if (stack.length > 0) {
-        currentChunk += char;
-      } else {
-        currentChunk += char;
-        pushChunk(currentChunk);
-        currentChunk = '';
-      }
-    } else {
-      currentChunk += char;
     }
   }
 
-  if (currentChunk) {
-    pushChunk(currentChunk);
+  if (currentGroup.length > 0) {
+    chunks.push(currentGroup);
   }
 
-  return chunks;
+  // Filter out any empty chunks resulting from consecutive delimiters
+  return chunks.filter(group => group.some(item => item.char.trim()));
 }
 
   /** Flattens sentence groups into a single formatted Pinyin string */
