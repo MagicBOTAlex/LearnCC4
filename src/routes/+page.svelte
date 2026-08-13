@@ -1,79 +1,89 @@
 <script>
   import { pinyin } from 'pinyin-pro';
 
-  /** Converts raw text input into structured sentence groups based on custom punctuation/quote logic */
-  function parseTextToPinyinGroups(text) {
-    if (!text.trim()) return [];
+  /** Converts raw text input into structured sentence groups based on custom punctuation/quote/emoji logic */
+function parseTextToPinyinGroups(text) {
+  if (!text.trim()) return [];
 
-    const SENTENCE_PUNCT_REGEX = /[,，.。!！?？;；:：]/;
+  // Check overall length condition: if less than 5 characters, do not split
+  if (Array.from(text).length < 5) {
+    return [
+      Array.from(text).map((char) => {
+        const pinyinList = pinyin(char, { type: 'array', toneType: 'symbol' });
+        return { char, pinyin: pinyinList[0] || '' };
+      })
+    ];
+  }
 
-    // Identify paired wrapper characters (quotes, brackets, parentheses)
-    const PAIRS = {
-      '(': ')', '（': '）',
-      '[': ']', '【': '】',
-      '{': '}', '《': '》',
-      '"': '"', "'": "'",
-      '“': '”', '‘': '’'
-    };
-    const OPENERS = new Set(Object.keys(PAIRS));
-    const CLOSERS = new Set(Object.values(PAIRS));
+  // Regex matching standard punctuation or Unicode Emojis
+  const SENTENCE_PUNCT_REGEX = /[,，.。!！?？;；:：]|\p{Extended_Pictographic}/u;
 
-    const chunks = [];
-    let currentChunk = '';
-    const stack = []; // Track active quotes/parentheses
+  const PAIRS = {
+    '(': ')', '（': '）',
+    '[': ']', '【': '】',
+    '{': '}', '《': '》',
+    '"': '"', "'": "'",
+    '“': '”', '‘': '’'
+  };
+  const OPENERS = new Set(Object.keys(PAIRS));
+  const CLOSERS = new Set(Object.values(PAIRS));
 
-    // Helper: append complete chunk to results with Pinyin metadata
-    function pushChunk(str) {
-      const trimmed = str.trim();
-      if (!trimmed) return;
+  const chunks = [];
+  let currentChunk = '';
+  const stack = [];
 
-      const chars = Array.from(trimmed);
-      const pinyinList = pinyin(trimmed, { 
-        type: 'array', 
-        toneType: 'symbol' 
-      });
+  function pushChunk(str) {
+    const trimmed = str.trim();
+    if (!trimmed) return;
 
-      chunks.push(
-        chars.map((char, index) => ({
-          char,
-          pinyin: pinyinList[index] || ''
-        }))
-      );
-    }
+    const chars = Array.from(trimmed);
+    const pinyinList = pinyin(trimmed, { 
+      type: 'array', 
+      toneType: 'symbol' 
+    });
 
-    // Process character by character
-    for (let i = 0; i < text.length; i++) {
-      const char = text[i];
-      const currentEnclosure = stack[stack.length - 1];
+    chunks.push(
+      chars.map((char, index) => ({
+        char,
+        pinyin: pinyinList[index] || ''
+      }))
+    );
+  }
 
-      if (OPENERS.has(char)) {
-        if (currentEnclosure && PAIRS[currentEnclosure] === char) {
-          stack.pop();
-          currentChunk += char;
-        } else {
-          stack.push(char);
-          currentChunk += char;
-        }
-      } else if (CLOSERS.has(char)) {
-        if (currentEnclosure && PAIRS[currentEnclosure] === char) {
-          stack.pop();
-        }
+  const characters = Array.from(text);
+
+  for (let i = 0; i < characters.length; i++) {
+    const char = characters[i];
+    const currentEnclosure = stack[stack.length - 1];
+
+    if (OPENERS.has(char)) {
+      if (currentEnclosure && PAIRS[currentEnclosure] === char) {
+        stack.pop();
         currentChunk += char;
-      } else if (SENTENCE_PUNCT_REGEX.test(char)) {
-        currentChunk += char;
-        pushChunk(currentChunk);
-        currentChunk = '';
       } else {
+        stack.push(char);
         currentChunk += char;
       }
-    }
-
-    if (currentChunk) {
+    } else if (CLOSERS.has(char)) {
+      if (currentEnclosure && PAIRS[currentEnclosure] === char) {
+        stack.pop();
+      }
+      currentChunk += char;
+    } else if (SENTENCE_PUNCT_REGEX.test(char)) {
+      currentChunk += char;
       pushChunk(currentChunk);
+      currentChunk = '';
+    } else {
+      currentChunk += char;
     }
-
-    return chunks;
   }
+
+  if (currentChunk) {
+    pushChunk(currentChunk);
+  }
+
+  return chunks;
+}
 
   /** Flattens sentence groups into a single formatted Pinyin string */
   function formatFullPinyin(groups) {
