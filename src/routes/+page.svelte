@@ -87,6 +87,7 @@
   let sentenceGroups = $state([]);
   let submitted = $state(false);
   let copied = $state(false);
+  let textareaRef = $state(null);
 
   // Derived state
   const charCount = $derived(textInput.length);
@@ -104,6 +105,13 @@
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
       handleSubmit(e);
     }
+  }
+
+  function handleClear() {
+    textInput = '';
+    sentenceGroups = [];
+    submitted = false;
+    textareaRef?.focus();
   }
 
   async function copyPinyin() {
@@ -134,7 +142,15 @@
         <label for="chinese-text" class="text-xs font-bold uppercase tracking-wider text-slate-400">
           Enter Chinese Characters
         </label>
-        <div class="flex items-center gap-3">
+        <div class="flex items-center gap-2">
+          <button 
+            type="button" 
+            onclick={handleClear}
+            disabled={!textInput}
+            class="text-[10px] uppercase font-bold tracking-wider text-slate-400 hover:text-slate-200 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed px-2.5 py-1 rounded-md transition-colors border border-slate-700/60"
+          >
+            Clear
+          </button>
           <button 
             type="button" 
             onclick={pasteAndOverride}
@@ -142,13 +158,14 @@
           >
             Paste & Override
           </button>
-          <span class="text-xs text-slate-500">{charCount} chars</span>
+          <span class="text-xs text-slate-500 ml-1">{charCount} chars</span>
         </div>
       </div>
 
       <div class="relative">
         <textarea 
           id="chinese-text" 
+          bind:this={textareaRef}
           rows="3"
           bind:value={textInput} 
           onkeydown={handleKeyDown}
