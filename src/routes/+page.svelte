@@ -1,7 +1,7 @@
 <script>
   import { pinyin } from 'pinyin-pro';
 
-  /** Converts raw text input into structured sentence groups based on custom punctuation/quote/emoji logic */
+  /** Converts raw text input into structured sentence groups based on custom punctuation/quote/emoji/space logic */
 function parseTextToPinyinGroups(text) {
   if (!text.trim()) return [];
 
@@ -15,8 +15,8 @@ function parseTextToPinyinGroups(text) {
     ];
   }
 
-  // Regex matching standard punctuation or Unicode Emojis
-  const SENTENCE_PUNCT_REGEX = /[,，.。!！?？;；:：]|\p{Extended_Pictographic}/u;
+  // Regex matching standard punctuation, spaces (\s, \u3000), or Unicode Emojis
+  const SENTENCE_PUNCT_REGEX = /[,，.。!！?？;；:：\s\u3000]|\p{Extended_Pictographic}/u;
 
   const PAIRS = {
     '(': ')', '（': '）',
@@ -70,9 +70,14 @@ function parseTextToPinyinGroups(text) {
       }
       currentChunk += char;
     } else if (SENTENCE_PUNCT_REGEX.test(char)) {
-      currentChunk += char;
-      pushChunk(currentChunk);
-      currentChunk = '';
+      // If we encounter a delimiter while inside quotes/brackets, keep it in current chunk
+      if (stack.length > 0) {
+        currentChunk += char;
+      } else {
+        currentChunk += char;
+        pushChunk(currentChunk);
+        currentChunk = '';
+      }
     } else {
       currentChunk += char;
     }
@@ -217,31 +222,32 @@ function parseTextToPinyinGroups(text) {
       </div>
 
       <!-- Segmented Sentence Blocks -->
-      <div class="space-y-4">
-        {#each sentenceGroups as group, idx}
-          <div class="p-4 bg-slate-950/50 rounded-xl space-y-3 border border-slate-800/80">
-            <!-- Hanzi Segment -->
-            <div>
-              <h4 class="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Sentence {idx + 1} - Hanzi</h4>
-              <p class="text-2xl font-bold text-slate-100 break-words leading-relaxed">
-                {#each group as item}{item.char}{/each}
-              </p>
-            </div>
-
-            <!-- Pinyin Segment -->
-            <div>
-              <h4 class="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Pinyin</h4>
-              <p class="text-base font-medium text-slate-300 break-words leading-relaxed">
-                {#each group as item}
-                  {#if item.pinyin}
-                    <span>{item.pinyin}&nbsp;</span>
-                  {/if}
-                {/each}
-              </p>
-            </div>
-          </div>
-        {/each}
+<div class="space-y-4">
+  {#each sentenceGroups as group, idx}
+    <div class="p-4 bg-slate-950/50 rounded-xl space-y-3 border border-slate-800/80">
+      <!-- Hanzi Segment -->
+      <div>
+        <h4 class="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Sentence {idx + 1} - Hanzi</h4>
+        <p class="text-2xl font-bold text-slate-100 break-words leading-relaxed">
+          {#each group as item}{item.char}{/each}
+        </p>
       </div>
+
+      <!-- Pinyin Segment -->
+      <div>
+        <h4 class="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Pinyin</h4>
+        <p class="text-base font-medium text-slate-300 break-normal leading-relaxed">
+          {#each group as item}
+            {#if item.pinyin}
+              <!-- inline-block & whitespace-nowrap keep the whole Pinyin syllable together -->
+              <span class="inline-block whitespace-nowrap">{item.pinyin}&nbsp;</span>
+            {/if}
+          {/each}
+        </p>
+      </div>
+    </div>
+  {/each}
+</div>
 
     </div>
   {/if}
